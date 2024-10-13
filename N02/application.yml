@@ -1,0 +1,25 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: website
+  profiles:
+    active: TEST
+logging:
+  level:
+    root: info
+    com.psc.sw: debug
+    org.thymeleaf: info
+    org.springframework.web: info
+google:
+  credentials-file-path: "credentials.json"
+  sheets:
+    application-name: "google-sheet"
+    sheet-id: "1NlFKJlDyVh88ge8TWZcBTyjSr8f1nbbwW-LKfbglu74"
+  docs:
+    default-doc-id: 1ivaZjQf16NkEOqW6zrOkPgXiQZgXoULVKCAUR_gUtRk
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel-like Sheet Editor</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        /* Facebook-style color palette */
+        :root {
+            --facebook-blue: #1877f2;
+            --background-gray: #f0f2f5;
+            --text-color: #050505;
+            --border-color: #ccd0d5;
+            --context-menu-bg: #ffffff;
+            --context-menu-hover: #f5f6f7;
+        }
+
+        body {
+            background-color: var(--background-gray);
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            color: var(--text-color);
+        }
+
+        h1 {
+            color: var(--facebook-blue);
+            margin-bottom: 30px;
+        }
+
+        /* Tab styles */
+        .nav-tabs .nav-link {
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            background-color: var(--context-menu-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            position: relative;
+        }
+
+        .nav-tabs .nav-link.active {
+            background-color: var(--background-gray);
+            color: var(--facebook-blue);
+            font-weight: bold;
+        }
+
+        /* Sheet name input field styles */
+        .sheet-name-input {
+            border: none;
+            background-color: transparent;
+            text-align: center;
+            width: 100%;
+            padding: 5px 0;
+            color: inherit;
+        }
+
+        .sheet-name-input:focus {
+            outline: none;
+            border-bottom: 2px solid var(--facebook-blue);
+        }
+
+        /* Table styles (Excel-like) */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 5px;
+            position: relative;
+        }
+
+        th {
+            background-color: var(--background-gray);
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        td {
+            background-color: #fff;
+        }
+
+        /* Cell input field styles */
+        td input {
+            border: none;
+            width: 100%;
+            height: 100%;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+
+        td input:focus {
+            outline: none;
+            background-color: #e7f3ff;
+        }
+
+        /* Context menu styles */
+        .context-menu {
+            display: none;
+            position: absolute;
+            z-index: 1000;
+            background-color: var(--context-menu-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        .context-menu button {
+            display: block;
+            width: 100%;
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            text-align: left;
+            cursor: pointer;
+            color: var(--text-color);
+            font-size: 14px;
+        }
+
+        .context-menu button:hover {
+            background-color: var(--context-menu-hover);
+        }
+
+        /* Cursor change on drag */
+        .nav-item[draggable="true"] {
+            cursor: move;
+            width: 12%;
+        }
+
+        /* Hide scrollbar */
+        .tab-content {
+            overflow-x: auto;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            height: 8px;
+            background-color: var(--background-gray);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: var(--border-color);
+            border-radius: 4px;
+        }
+
+        /* Highlight selected row */
+        .selected-row {
+            background-color: #d3d3d3;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-5">
+    <h1 class="text-center">Excel-like Sheet Editor</h1>
+
+    <!-- Tabs navigation -->
+    <ul class="nav nav-tabs" id="sheetTabs" role="tablist">
+        <!-- Sheet tabs will be dynamically added here -->
+    </ul>
+
+    <!-- Tabs content -->
+    <div class="tab-content mt-3" id="sheetContent">
+        <!-- Active sheet content will be loaded here -->
+    </div>
+</div>
+
+<!-- Context menus -->
+<div class="context-menu" id="contextMenu">
+    <button id="deleteColBtn">Delete Column</button>
+    <button id="addLeftColBtn">Add Column to Left</button>
+    <button id="addRightColBtn">Add Column to Right</button>
+</div>
+
+<div class="context-menu" id="rowContextMenu">
+    <button id="deleteRowBtn">Delete Row</button>
+    <button id="addAboveRowBtn">Add Row Above</button>
+    <button id="addBelowRowBtn">Add Row Below</button>
+</div>
+
+<div class="context-menu" id="sheetContextMenu">
+    <button id="addSheetLeftBtn">Add Sheet to Left</button>
+    <button id="addSheetRightBtn">Add Sheet to Right</button>
+    <button id="deleteSheetBtn">Delete Sheet</button>
+</div>
+
+<!-- Load Bootstrap JS and Popper.js -->
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    let sheets = /*[[${sheetList}]]*/ [];
+    /*]]>*/
+</script>
+<script>
+
+    let currentSheetIndex = 0; // Default active sheet index
+    let draggedIndex = null;    // Dragged sheet index
+    let isDragging = false;     // Dragging state
+    let currentCol = null;      // Current column index (for context menu)
+    let currentRow = null;      // Current row index (for context menu)
+
+    // Selected row index (0-based). Initially set to null
+    let selectedRowIndex = null;
+
+    /**
+     * Load all sheets and render tabs
+     */
+    function loadSheets() {
+        const sheetTabs = document.getElementById('sheetTabs');
+        sheetTabs.innerHTML = '';
+
+        sheets.forEach((sheet, index) => {
+            const tabItem = document.createElement('li');
+            tabItem.className = 'nav-item';
+            tabItem.draggable = true; // Make sheet tabs draggable
+
+            const tabLink = document.createElement('a');
+            tabLink.className = index === currentSheetIndex ? 'nav-link active' : 'nav-link';
+            tabLink.id = `sheet${sheet.id}-tab`;
+            tabLink.dataset.bsToggle = 'tab';
+            tabLink.href = `#sheet${sheet.id}`;
+            tabLink.role = 'tab';
+            tabLink.ariaControls = `sheet${sheet.id}`;
+            tabLink.ariaSelected = index === currentSheetIndex ? 'true' : 'false';
+
+            const sheetNameInput = document.createElement('input');
+            sheetNameInput.type = 'text';
+            sheetNameInput.className = 'sheet-name-input';
+            sheetNameInput.value = sheet.name || '';
+            sheetNameInput.dataset.index = index;
+
+            sheetNameInput.addEventListener('focus', function () {
+                sheetNameInput.dataset.oldValue = sheetNameInput.value;
+            });
+
+            sheetNameInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    sheetNameInput.blur();
+                }
+            });
+
+            // Rename sheet on blur event
+            sheetNameInput.addEventListener('blur', function () {
+                if (isDragging) {
+                    return; // Ignore during dragging
+                }
+                const oldName = sheetNameInput.dataset.oldValue;
+                const newName = sheetNameInput.value.trim();
+
+                if (newName !== oldName) {
+                    if (!newName) {
+                        alert("Sheet name cannot be empty.");
+                        sheetNameInput.value = oldName;
+                        return;
+                    }
+
+                    if (isDuplicateSheetName(newName, index)) {
+                        alert("Sheet name already exists.");
+                        sheetNameInput.value = oldName;
+                        return;
+                    }
+
+                    // AJAX request to rename sheet
+                    const params = new URLSearchParams({
+                        oldName: oldName,
+                        newName: newName
+                    });
+                    const url = `/sheet/rename`;
+                    fetch(url, {
+                        method: 'POST',  // Use HTTP POST method
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: params.toString()
+                    })
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error('Server response was not ok.');
+                            }
+                            return response.json();  // Parse JSON response
+                        })
+                        .then(data => {
+                            if (data.status === "success") {
+                                // Update sheet name on success
+                                sheets[index].name = newName;
+                                alert('Sheet name changed to: ' + newName);
+                            } else {
+                                throw new Error(data.message || 'Error renaming sheet.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error renaming sheet:', error);
+                            alert("Error renaming sheet.");
+                            sheetNameInput.value = oldName; // Revert to old name on failure
+                        });
+                }
+            });
+
+            // Trigger blur when mouse leaves the input field
+            sheetNameInput.addEventListener('mouseleave', function () {
+                sheetNameInput.blur();
+            });
+
+            tabLink.appendChild(sheetNameInput);
+            tabItem.appendChild(tabLink);
+            sheetTabs.appendChild(tabItem);
+
+            // Show context menu on right-clicking sheet tab
+            tabLink.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                showSheetContextMenu(e, index);
+            });
+
+            // Load sheet data and switch active tab on click
+            tabLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (currentSheetIndex !== index) {
+                    currentSheetIndex = index;
+                    setActiveTab(index);
+                }
+            });
+
+            // Add drag and drop event listeners
+            tabItem.addEventListener('dragstart', (e) => handleDragStart(e, index));
+            tabItem.addEventListener('dragover', handleDragOver);
+            tabItem.addEventListener('drop', (e) => handleDrop(e, index));
+        });
+
+        // Load data for the active sheet
+        loadActiveSheetData();
+    }
+
+    /**
+     * Set the active tab and load its data
+     * @param {number} index - Index of the tab to activate
+     */
+    function setActiveTab(index) {
+        // Remove active class from all tabs
+        const allTabs = document.querySelectorAll('.nav-link');
+        allTabs.forEach(tab => tab.classList.remove('active'));
+        allTabs[index].classList.add('active');
+
+        // Load active sheet data
+        loadActiveSheetData();
+    }
+
+    /**
+     * Load data for the active sheet
+     */
+    function loadActiveSheetData() {
+        const sheetContent = document.getElementById('sheetContent');
+        sheetContent.innerHTML = ''; // Clear existing content
+
+        const sheet = sheets[currentSheetIndex];
+        const table = document.createElement('table');
+        table.className = 'table';
+        table.id = `sheet${sheet.id}Table`;
+
+        const thead = document.createElement('thead');
+        const tbody = document.createElement('tbody');
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        sheetContent.appendChild(table);
+
+        // AJAX request to fetch sheet data
+        const params = new URLSearchParams({ sheetName: sheet.name });
+        const url = `/sheet/data?${params.toString()}`;
+        fetch(url, {
+            method: 'GET',  // Use HTTP GET method
+            headers: {
+                'Content-Type': 'application/json',  // Set Content-Type
+            }
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();  // Parse JSON response
+            })
+            .then(data => {
+                // Extract sheet data from response
+                sheet.data = data[sheet.name] || [];
+
+                // Initialize with one empty row if sheet is empty
+                if (sheet.data.length === 0) {
+                    sheet.data.push(['']);
+                }
+
+                // Render the sheet data
+                renderSheetData(currentSheetIndex, `sheet${sheet.id}Table`);
+            })
+            .catch(error => {
+                console.error('Error fetching sheet data:', error);
+                alert("Failed to load sheet data.");
+            });
+    }
+
+    /**
+     * Handle cell update by sending AJAX request to the server
+     * @param {number} rowIndex - Row index (0-based)
+     * @param {number} colIndex - Column index (0-based)
+     * @param {HTMLElement} inputElement - The input element that was updated
+     */
+    function handleCellUpdate(rowIndex, colIndex, inputElement) {
+        if (isDragging) {
+            return; // Ignore during dragging
+        }
+
+        const oldValue = inputElement.dataset.oldValue;
+        const newValue = inputElement.value.trim();
+
+        // Ignore if value hasn't changed
+        if (newValue === oldValue) {
+            return;
+        }
+
+        const sheet = sheets[currentSheetIndex];
+        const sheetName = sheet.name;
+
+        // Show loading state
+        inputElement.disabled = true;
+        inputElement.style.backgroundColor = '#e7f3ff'; // Example: blue background
+
+        // AJAX request to update cell data
+        const params = new URLSearchParams({
+            sheetName: sheetName,
+            rowIndex: rowIndex,
+            colIndex: colIndex,
+            newValue: newValue
+        });
+
+        const url = `/sheet/updateCell`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === "success") {
+                    // Update local sheet data on success
+                    sheet.data[rowIndex][colIndex] = newValue;
+                    console.log(`Sheet "${sheetName}" (Index: ${currentSheetIndex}): Cell (Row ${rowIndex + 1}, Column ${colIndex + 1}) changed to "${newValue}".`);
+                } else {
+                    throw new Error(data.message || 'Failed to update cell.');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating cell:', error);
+                alert("Failed to update cell. Reverting to original value.");
+                // Revert to old value on failure
+                inputElement.value = oldValue;
+            })
+            .finally(() => {
+                // Remove loading state
+                inputElement.disabled = false;
+                inputElement.style.backgroundColor = ''; // Revert to original background
+            });
+    }
+
+
+    /**
+     * Handle drag start event for sheet tabs
+     * @param {DragEvent} e - The drag event
+     * @param {number} index - Index of the dragged sheet
+     */
+    function handleDragStart(e, index) {
+        draggedIndex = index;
+        isDragging = true; // Start dragging
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    /**
+     * Handle drag over event for sheet tabs
+     * @param {DragEvent} e - The drag event
+     */
+    function handleDragOver(e) {
+        e.preventDefault(); // Allow drop
+        e.dataTransfer.dropEffect = 'move';
+    }
+
+    /**
+     * Handle drop event for sheet tabs
+     * @param {DragEvent} e - The drop event
+     * @param {number} targetIndex - Index where the sheet is dropped
+     */
+    function handleDrop(e, targetIndex) {
+        e.preventDefault();
+
+        if (draggedIndex !== null && draggedIndex !== targetIndex) {
+            const draggedSheet = sheets[draggedIndex];
+            let newIndex = targetIndex;
+            let right = 0;
+
+            // If draggedIndex is less than targetIndex, adjust the newIndex
+            if (draggedIndex < targetIndex) {
+                right = 1;
+            }
+
+            console.log(`Dragged Index: ${draggedIndex}, Target Index: ${targetIndex}, New Index: ${newIndex}`);
+
+            // Reorder sheets array
+            sheets.splice(draggedIndex, 1); // Remove dragged sheet
+            sheets.splice(newIndex, 0, draggedSheet); // Insert at new position
+
+            // Send AJAX request to update sheet order on the server
+            const params = new URLSearchParams({
+                sheetName: draggedSheet.name,
+                targetIndex: newIndex,
+                right: right   // 1 means move to the right
+            });
+            const url = `/sheet/move`;
+            fetch(url, {
+                method: 'POST',  // Use HTTP POST method
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Server response was not ok.');
+                    }
+                    return response.json();  // Parse JSON response
+                })
+                .then(data => {
+                    if (data.status === "success") {
+                        // Reload sheets on success
+                        loadSheets();
+                        currentSheetIndex = newIndex;
+                    } else {
+                        throw new Error(data.message || 'Failed to move sheet.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error moving sheet:', error);
+                    alert("Failed to move sheet.");
+                });
+
+            draggedIndex = null;
+            isDragging = false; // End dragging
+        }
+    }
+
+    /**
+     * Render sheet data into the table
+     * @param {number} sheetIndex - Index of the sheet to render
+     * @param {string} tableId - ID of the table element
+     */
+    function renderSheetData(sheetIndex, tableId) {
+        const sheet = sheets[sheetIndex];
+        const data = sheet.data || [];
+        const tableBody = document.querySelector(`#${tableId} tbody`);
+        const tableHeader = document.querySelector(`#${tableId} thead`);
+        tableBody.innerHTML = '';
+        tableHeader.innerHTML = '';
+
+        // Create header row (1, 2, 3, ...)
+        const headerRow = document.createElement('tr');
+        let columnCount = 1;
+
+        if (data.length > 0) {
+            // Calculate the maximum number of columns in the data
+            columnCount = Math.max(...data.map(row => row.length), 1);
+        }
+
+        for (let i = 1; i <= columnCount; i++) {
+            const headerCell = document.createElement('th');
+            headerCell.textContent = `${i}`;
+            headerRow.appendChild(headerCell);
+            headerCell.addEventListener('contextmenu', (e) => showContextMenu(e, i));
+        }
+        tableHeader.appendChild(headerRow);
+
+        if (data.length === 0) {
+            // Display an empty sheet if there is no data
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = '';
+            input.addEventListener('focus', function () {
+                input.dataset.oldValue = input.value;
+            });
+
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    input.blur();
+                }
+            });
+
+            // Add data and send to server on cell edit
+            input.addEventListener('blur', function () {
+                handleCellUpdate(0, 0, input);
+            });
+
+            cell.appendChild(input);
+            row.appendChild(cell);
+            tableBody.appendChild(row);
+            return;
+        }
+
+        // Create data rows
+        data.forEach((rowData, rowIndex) => {
+            const row = document.createElement('tr');
+            for (let i = 1; i <= columnCount; i++) {
+                const cell = document.createElement('td');
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = rowData[i - 1] !== undefined ? rowData[i - 1] : '';
+                input.addEventListener('focus', function () {
+                    input.dataset.oldValue = input.value;
+                });
+
+                // Trigger blur event on Enter key press
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        input.blur();
+                    }
+                });
+
+                // Send data to server on blur event
+                input.addEventListener('blur', function () {
+                    handleCellUpdate(rowIndex, i - 1, input);
+                });
+
+                cell.appendChild(input);
+                row.appendChild(cell);
+            }
+
+            // Show context menu on right-clicking a row
+            row.addEventListener('contextmenu', (e) => showRowContextMenu(e, rowIndex + 1));
+            tableBody.appendChild(row);
+
+            // Handle row selection on click
+            row.addEventListener('click', () => {
+                // Remove styling from previously selected row
+                if (selectedRowIndex !== null && tableBody.rows[selectedRowIndex]) {
+                    tableBody.rows[selectedRowIndex].classList.remove('selected-row');
+                }
+
+                // Set the current row as selected
+                selectedRowIndex = rowIndex;
+                row.classList.add('selected-row');
+
+                console.log(`Selected Row Index: ${selectedRowIndex}`);
+            });
+        });
+
+        // Update selection if the selected row was deleted
+        if (selectedRowIndex !== null && selectedRowIndex >= data.length) {
+            selectedRowIndex = data.length - 1;
+            if (selectedRowIndex >= 0) {
+                tableBody.rows[selectedRowIndex].classList.add('selected-row');
+            } else {
+                selectedRowIndex = null;
+            }
+        }
+    }
+
+    /**
+     * Show context menu for columns
+     * @param {MouseEvent} event - The context menu event
+     * @param {number} colIndex - Column index (1-based)
+     */
+    function showContextMenu(event, colIndex) {
+        event.preventDefault();
+        currentCol = parseInt(colIndex);
+        const contextMenu = document.getElementById('contextMenu');
+        contextMenu.style.display = 'block';
+        contextMenu.style.left = `${event.pageX}px`;
+        contextMenu.style.top = `${event.pageY}px`;
+    }
+
+    /**
+     * Show context menu for rows
+     * @param {MouseEvent} event - The context menu event
+     * @param {number} rowIndex - Row index (1-based)
+     */
+    function showRowContextMenu(event, rowIndex) {
+        event.preventDefault();
+        currentRow = rowIndex;
+        const rowContextMenu = document.getElementById('rowContextMenu');
+        rowContextMenu.style.display = 'block';
+        rowContextMenu.style.left = `${event.pageX}px`;
+        rowContextMenu.style.top = `${event.pageY}px`;
+
+        // Update selectedRowIndex
+        selectedRowIndex = rowIndex - 1;
+    }
+
+    /**
+     * Show context menu for sheets
+     * @param {MouseEvent} event - The context menu event
+     * @param {number} index - Sheet index
+     */
+    function showSheetContextMenu(event, index) {
+        event.preventDefault();
+        currentSheetIndex = index;
+        const sheetContextMenu = document.getElementById('sheetContextMenu');
+        sheetContextMenu.style.display = 'block';
+        sheetContextMenu.style.left = `${event.pageX}px`;
+        sheetContextMenu.style.top = `${event.pageY}px`;
+    }
+
+    // Hide all context menus on any click
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.context-menu').forEach(menu => menu.style.display = 'none');
+    });
+
+
+    /**
+     * Add sheet to the left
+     */
+    document.getElementById('addSheetLeftBtn').addEventListener('click', () => {
+        const newSheetName = generateUniqueSheetName();
+        const newSheet = {id: Date.now(), name: newSheetName, data: []}; // Initialize empty sheet
+        sheets.splice(currentSheetIndex, 0, newSheet);
+        // direction left = 0 , right = 1
+        let right = 0;
+        addSheetAjax(newSheetName, currentSheetIndex, right);
+    });
+
+    /**
+     * Add sheet to the right
+     */
+    document.getElementById('addSheetRightBtn').addEventListener('click', () => {
+        const newSheetName = generateUniqueSheetName();
+        const newSheet = {id: Date.now(), name: newSheetName, data: []}; // Initialize empty sheet
+        sheets.splice(currentSheetIndex + 1, 0, newSheet);
+
+        // direction left = 0 , right = 1
+        let right = 1;
+        addSheetAjax(newSheetName, currentSheetIndex, right);
+    });
+
+    /**
+     * Delete the current sheet
+     */
+    document.getElementById('deleteSheetBtn').addEventListener('click', () => {
+        if (sheets.length > 1) {
+            const removedSheet = sheets.splice(currentSheetIndex, 1)[0];
+
+            const params = new URLSearchParams({
+                sheetName: removedSheet.name
+            });
+            const url = `/sheet/remove`;
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Server response was not ok.');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === "success") {
+                        // Reload sheets
+                        currentSheetIndex = Math.max(0, currentSheetIndex - 1);
+                        loadSheets();
+                    } else {
+                        throw new Error(data.message || 'Failed to delete sheet.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting sheet:', error);
+                    alert("Failed to delete sheet.");
+                });
+
+        } else {
+            alert("At least one sheet must remain.");
+        }
+    });
+
+    /**
+     * Delete a column
+     */
+    document.getElementById('deleteColBtn').addEventListener('click', () => {
+        const sheet = sheets[currentSheetIndex];
+        const columnCount = getColumnCount(sheet.data);
+        if (columnCount <= 1) {
+            alert("At least one column must remain.");
+            return;
+        }
+
+        const columnIndex = currentCol - 1; // 0-based index
+        // Send AJAX request to delete column
+        const params = new URLSearchParams({
+            sheetName: sheet.name,
+            colIndex: columnIndex
+        });
+        const url = `/sheet/column/remove`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === "success") {
+                    // Update local sheet data: remove the column
+                    sheet.data.forEach(row => {
+                        row.splice(columnIndex, 1);
+                    });
+
+                    // Update DOM: remove the column from the table
+                    const table = document.getElementById(`sheet${sheet.id}Table`);
+                    const thead = table.querySelector('thead tr');
+                    if (thead.children[columnIndex]) {
+                        thead.removeChild(thead.children[columnIndex]);
+                    }
+
+                    const tbody = table.querySelector('tbody');
+                    tbody.querySelectorAll('tr').forEach(row => {
+                        if (row.children[columnIndex]) {
+                            row.removeChild(row.children[columnIndex]);
+                        }
+                    });
+
+                    // Update header numbers
+                    updateHeaderNumbers(table, columnIndex);
+
+                    console.log(`Sheet "${sheet.name}" (Index: ${currentSheetIndex}): Column ${columnIndex + 1} removed.`);
+                } else {
+                    throw new Error(data.message || 'Failed to delete column.');
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting column:', error);
+                alert("Failed to delete column.");
+            });
+    });
+
+    /**
+     * Add a column to the left
+     */
+    document.getElementById('addLeftColBtn').addEventListener('click', () => {
+        const sheet = sheets[currentSheetIndex];
+        const columnIndex = currentCol - 1; // 0-based index
+
+        // Send AJAX request to add column
+        const params = new URLSearchParams({
+            sheetName: sheet.name,
+            startIndex: columnIndex,
+            right: 0 // Add to the left
+        });
+        const url = `/sheet/column/add`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === "success") {
+                    // Update local sheet data: add new column
+                    sheet.data.forEach(row => {
+                        row.splice(columnIndex, 0, '');
+                    });
+
+                    // Update DOM: add new column to the table
+                    const table = document.getElementById(`sheet${sheet.id}Table`);
+                    const thead = table.querySelector('thead tr');
+                    const newHeader = document.createElement('th');
+                    newHeader.textContent = `${columnIndex + 1}`;
+                    thead.insertBefore(newHeader, thead.children[columnIndex]);
+
+                    const tbody = table.querySelector('tbody');
+                    tbody.querySelectorAll('tr').forEach((row, rowIndex) => {
+                        const newCell = createNewCell(rowIndex, columnIndex);
+                        row.insertBefore(newCell, row.children[columnIndex]);
+                    });
+
+                    // Update header numbers
+                    updateHeaderNumbers(table, columnIndex);
+
+                    console.log(`Sheet "${sheet.name}" (Index: ${currentSheetIndex}): Column ${columnIndex + 1} added to left.`);
+                } else {
+                    throw new Error(data.message || 'Failed to add column.');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding column:', error);
+                alert("Failed to add column.");
+            });
+    });
+
+    /**
+     * Add a column to the right
+     */
+    document.getElementById('addRightColBtn').addEventListener('click', () => {
+        const sheet = sheets[currentSheetIndex];
+        const columnIndex = currentCol; // 0-based index
+
+        // Send AJAX request to add column
+        const params = new URLSearchParams({
+            sheetName: sheet.name,
+            startIndex: columnIndex,
+            right: 1 // Add to the right
+        });
+        const url = `/sheet/column/add`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === "success") {
+                    // Update local sheet data: add new column
+                    sheet.data.forEach(row => {
+                        row.splice(columnIndex, 0, '');
+                    });
+
+                    // Update DOM: add new column to the table
+                    const table = document.getElementById(`sheet${sheet.id}Table`);
+                    const thead = table.querySelector('thead tr');
+                    const newHeader = document.createElement('th');
+                    newHeader.textContent = `${columnIndex + 1}`;
+                    thead.insertBefore(newHeader, thead.children[columnIndex]);
+
+                    const tbody = table.querySelector('tbody');
+                    tbody.querySelectorAll('tr').forEach((row, rowIndex) => {
+                        const newCell = createNewCell(rowIndex, columnIndex);
+                        row.insertBefore(newCell, row.children[columnIndex]);
+                    });
+
+                    // Update header numbers
+                    updateHeaderNumbers(table, columnIndex);
+
+                    console.log(`Sheet "${sheet.name}" (Index: ${currentSheetIndex}): Column ${columnIndex + 1} added to right.`);
+                } else {
+                    throw new Error(data.message || 'Failed to add column.');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding column:', error);
+                alert("Failed to add column.");
+            });
+    });
+
+
+    /**
+     * Add row above the selected row
+     */
+    document.getElementById('addAboveRowBtn').addEventListener('click', async () => {
+        const sheet = sheets[currentSheetIndex];
+        const sheetName = sheet.name;
+        const startIndex = getSelectedRowIndex(); // Index of the selected row (0-based)
+        const below = 0; // Add above
+
+        const success = await addRowAjax(sheetName, startIndex, below);
+        if (success) {
+            // Update UI after successful addition
+            const newRow = createEmptyRow(); // Create a new empty row
+            sheet.data.splice(startIndex, 0, newRow); // Insert above the selected row
+            console.log(`Sheet "${sheetName}": Row added above index ${startIndex}.`);
+            renderSheetData(currentSheetIndex, `sheet${sheet.id}Table`);
+        }
+    });
+
+    /**
+     * Add row below the selected row
+     */
+    document.getElementById('addBelowRowBtn').addEventListener('click', async () => {
+        const sheet = sheets[currentSheetIndex];
+        const sheetName = sheet.name;
+        const startIndex = getSelectedRowIndex(); // Index of the selected row (0-based)
+        const below = 1; // Add below
+
+        const success = await addRowAjax(sheetName, startIndex, below);
+        if (success) {
+            // Update UI after successful addition
+            const newRow = createEmptyRow(); // Create a new empty row
+            sheet.data.splice(startIndex + 1, 0, newRow); // Insert below the selected row
+            console.log(`Sheet "${sheetName}": Row added below index ${startIndex}.`);
+            renderSheetData(currentSheetIndex, `sheet${sheet.id}Table`);
+        }
+    });
+
+    /**
+     * Delete the selected row
+     */
+    document.getElementById('deleteRowBtn').addEventListener('click', async () => {
+        const sheet = sheets[currentSheetIndex];
+        const sheetName = sheet.name;
+        const startIndex = getSelectedRowIndex(); // Index of the row to delete (0-based)
+        const numRows =  1; // Number of rows to delete
+
+        // **Added Condition: Prevent deleting if there's only one row**
+        if (sheet.data.length <= 1) {
+            alert("Cannot delete the last remaining row.");
+            return; // Exit the function early
+        }
+
+
+        const success = await deleteRowAjax(sheetName, startIndex, numRows);
+        if (success) {
+            // Update UI after successful deletion
+            sheet.data.splice(startIndex, numRows);
+            console.log(`Sheet "${sheetName}": Row(s) deleted starting at index ${startIndex}.`);
+            renderSheetData(currentSheetIndex, `sheet${sheet.id}Table`);
+        }
+    });
+
+
+    /**
+     * AJAX request to delete a row
+     * @param {string} sheetName - Name of the sheet
+     * @param {number} startIndex - Starting row index (0-based)
+     * @param {number} numRows - Number of rows to delete
+     * @returns {Promise<boolean>} - Success status
+     */
+    function deleteRowAjax(sheetName, startIndex, numRows) {
+        const params = new URLSearchParams({
+            sheetName: sheetName,
+            startIndex: startIndex,
+            numRows: numRows
+        });
+        const url = `/sheet/row/delete`;
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === "success") {
+                    return true;
+                } else {
+                    alert("Failed to delete row.");
+                    return false;
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting row:', error);
+                alert("Failed to delete row.");
+                return false;
+            });
+    }
+
+    /**
+     * AJAX request to add a row
+     * @param {string} sheetName - Name of the sheet
+     * @param {number} startIndex - Row index to add above or below (0-based)
+     * @param {number} below - Direction to add (0 = above, 1 = below)
+     * @returns {Promise<boolean>} - Success status
+     */
+    function addRowAjax(sheetName, startIndex, below) {
+        const params = new URLSearchParams({
+            sheetName: sheetName,
+            startIndex: startIndex,
+            below: below
+        });
+        const url = `/sheet/row/add`;
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === "success") {
+                    return true;
+                } else {
+                    alert("Failed to add row.");
+                    return false;
+                }
+            })
+            .catch(error => {
+                console.error('Error adding row:', error);
+                alert("Failed to add row.");
+                return false;
+            });
+    }
+
+    /**
+     * Create a new empty row
+     * @returns {Array<string>} - New empty row data
+     */
+    function createEmptyRow() {
+        const numColumns = sheets[currentSheetIndex].data[0].length;
+        return Array(numColumns).fill('');
+    }
+
+    /**
+     * Get the index of the selected row
+     * @returns {number} - Selected row index (0-based)
+     */
+    function getSelectedRowIndex() {
+        // Implement logic to return the index of the selected row
+        // For example, using the selectedRowIndex variable
+        return selectedRowIndex;
+    }
+
+
+
+
+    /**
+     * AJAX request to add a new sheet
+     * @param {string} newSheetName - Name of the new sheet
+     * @param {number} currentSheetIndex - Current sheet index
+     * @param {number} right - Direction to add (0 = left, 1 = right)
+     * @returns {Promise<boolean>} - Success status
+     */
+    function addSheetAjax(newSheetName, currentSheetIndex, right){
+        const params = new URLSearchParams({
+            newSheetName: newSheetName,
+            currentSheetIndex: currentSheetIndex,
+            right: right
+        });
+        const url = `/sheet/add`;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Server response was not ok.');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if(data.status === "success"){
+                    console.log(`Added sheet "${newSheetName}" at index ${currentSheetIndex} from ${right === 0 ? 'left' : 'right'}.`);
+                    loadSheets();
+                    const newSheetIndex = right === 0 ? currentSheetIndex : currentSheetIndex + 1;
+                    focusOnSheetNameInput(newSheetIndex);
+                    return true;
+                } else {
+                    throw new Error(data.message || 'Failed to add sheet.');
+                }
+            })
+            .catch(error => {
+                console.error('Error adding sheet:', error);
+                alert("Failed to add sheet.");
+                return false;
+            });
+    }
+
+    /**
+     * Focus on the sheet name input field for a specific sheet
+     * @param {number} sheetIndex - Index of the sheet
+     */
+    function focusOnSheetNameInput(sheetIndex) {
+        setTimeout(() => {
+            const sheetTabs = document.getElementById('sheetTabs');
+            const newSheetInput = sheetTabs.querySelector(`input[data-index="${sheetIndex}"]`);
+            if (newSheetInput) {
+                newSheetInput.focus();
+                newSheetInput.select();
+            }
+        }, 0);
+    }
+
+    /**
+     * Check if a sheet name already exists (excluding the current sheet)
+     * @param {string} name - Sheet name to check
+     * @param {number} currentIndex - Current sheet index
+     * @returns {boolean} - True if duplicate exists, false otherwise
+     */
+    function isDuplicateSheetName(name, currentIndex) {
+        return sheets.some((sheet, index) => sheet.name === name && index !== currentIndex);
+    }
+
+    /**
+     * Generate a unique sheet name
+     * @returns {string} - Unique sheet name
+     */
+    function generateUniqueSheetName() {
+        let sheetNumber = 1;
+        while (sheets.some(sheet => sheet.name === `Sheet${sheetNumber}`)) {
+            sheetNumber++;
+        }
+        return `Sheet${sheetNumber}`;
+    }
+
+    /**
+     * Get the maximum number of columns in the sheet data
+     * @param {Array<Array<string>>} data - Sheet data
+     * @returns {number} - Maximum number of columns
+     */
+    function getColumnCount(data) {
+        if (data.length === 0) return 1;
+        return Math.max(...data.map(row => row.length), 1);
+    }
+
+    /**
+     * Update header numbers after adding or removing columns
+     * @param {HTMLElement} table - Table element
+     * @param {number} startIndex - Starting column index
+     */
+    function updateHeaderNumbers(table, startIndex) {
+        const thead = table.querySelector('thead tr');
+        for (let i = startIndex; i < thead.children.length; i++) {
+            thead.children[i].textContent = `${i + 1}`;
+            // Re-register contextmenu event for updated column header
+            thead.children[i].removeEventListener('contextmenu', showContextMenu);
+            thead.children[i].addEventListener('contextmenu', (e) => showContextMenu(e, i + 1));
+        }
+    }
+
+    // Initialize by loading sheets
+    loadSheets();
+
+    /**
+     * Create a new table cell with input and necessary event listeners
+     * @param {number} rowIndex - Row index (0-based)
+     * @param {number} colIndex - Column index (0-based)
+     * @returns {HTMLElement} - New table cell element
+     */
+    function createNewCell(rowIndex, colIndex) {
+        const newCell = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = '';
+        input.addEventListener('focus', function () {
+            input.dataset.oldValue = input.value;
+        });
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                input.blur();
+            }
+        });
+
+        // Handle cell edit and send data to server
+        input.addEventListener('blur', function () {
+            handleCellUpdate(rowIndex, colIndex, input);
+        });
+
+        newCell.appendChild(input);
+        return newCell;
+    }
+</script>
+</body>
+</html>
