@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Pixel & Conversion API</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <!-- Facebook Pixel Code -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod ?
+            n.callMethod.apply(n,arguments) : n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window,document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+    // initial time, don't make pixel event.
+  </script>
+  <!-- End Facebook Pixel Code -->
+
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      background-color: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      width: 400px;
+      text-align: center;
+    }
+
+    h2 {
+      color: #1877f2;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-spacing: 0;
+      margin-bottom: 20px;
+    }
+
+    td {
+      padding: 10px;
+      vertical-align: middle;
+    }
+
+    input[type="text"], input[type="email"], select {
+      width: calc(100% - 20px);
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      appearance: none;
+      background-color: white;
+      background-image: url('data:image/svg+xml;utf8,\
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="gray" \
+class="bi bi-chevron-down" viewBox="0 0 16 16">\
+<path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293\
+l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6\
+a.5.5 0 0 1 0-.708z"/></svg>');
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 16px;
+    }
+
+    select {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+    }
+
+    button {
+      background-color: #1877f2;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    button:hover {
+      background-color: #165ddc;
+    }
+
+    #result {
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 6px;
+      text-align: left;
+    }
+
+    #responseContent {
+      font-size: 14px;
+      color: #333;
+    }
+  </style>
+
+</head>
+
+<body>
+
+<div class="container">
+  <h2>Dynamic Pixel & Conversion API</h2>
+
+  <table>
+    <tr>
+      <td>SITE URL</td>
+      <td><input type="text" id="url_id" placeholder="URL"></td>
+    </tr>
+    <tr>
+      <td>Pixel ID</td>
+      <td><input type="text" id="pixel_id" placeholder="Pixel ID"></td>
+    </tr>
+    <tr>
+      <td>Token ID</td>
+      <td><input type="text" id="token_id" placeholder="Token ID"></td>
+    </tr>
+    <tr>
+      <td>Phone</td>
+      <td><input type="text" id="phone" placeholder="Phone"></td>
+    </tr>
+    <tr>
+      <td>Email</td>
+      <td><input type="email" id="email" placeholder="Email"></td>
+    </tr>
+
+    <tr>
+      <td>Product ID</td>
+      <td>
+        <select id="product_id">
+          <option value="i14">Iphone 14</option>
+          <option value="i15">iphone 15</option>
+          <option value="s26">Galaxy S26</option>
+        </select>
+      </td>
+    </tr>
+
+    <tr>
+      <td>Product Value</td>
+      <td>
+        <select id="product_value">
+          <option value="1000.00">1000</option>
+          <option value="2000.00">2000</option>
+          <option value="3000.00">3000</option>
+        </select>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <button id="submitBtn">Make pixel & Conversion API event</button>
+      </td>
+    </tr>
+  </table>
+
+  <div id="result" style="display: none;">
+    <h3>server response:</h3>
+    <div id="responseContent"></div>
+  </div>
+</div>
+
+<script>
+  function getCookie(name) {
+    let match = document.cookie.match(new RegExp('(^| )' + name +
+            '=([^;]+)'));
+    return match ? match[2] : null;
+  }
+
+  function isValidPhoneNumber(phone) {
+    var phoneRegex = /^[0-9\-+]{10,15}$/;
+    return phoneRegex.test(phone);
+  }
+
+  function isValidEmail(email) {
+    var emailRegex = /^[^\s@]+@[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  function isValidPixelId(pixelId) {
+    var pixelIdRegex = /^[0-9]{15,16}$/;
+    return pixelIdRegex.test(pixelId);
+  }
+
+  function isValidMetaToken(token) {
+    return token.length >= 100;
+  }
+
+  $(document).ready(function() {
+    var initializedPixels = {};
+    let isTracking = false;
+
+
+    $('#submitBtn').click(function() {
+      if (isTracking) return;
+
+      isTracking = true;
+      setTimeout(function() { isTracking = false; }, 1000);
+
+      var eventId = 'event_' + Math.random().toString(36).substring(2) +
+              Date.now().toString(36);
+
+      var urlId = $('#url_id').val();
+      if (!/^https?:\/\//i.test(urlId)) {
+        alert('The URL must start with http:// or https://.');
+        return;
+      }
+
+      var pixelId = $('#pixel_id').val();
+      if (!isValidPixelId(pixelId)) {
+        alert('The Pixel ID is invalid. Please enter a 15 to 16-digit number.');
+        return;
+      }
+
+      var tokenId = $('#token_id').val();
+      if (!isValidMetaToken(tokenId)) {
+        alert('The token ID is invalid. It must be at least 100 characters long.');
+        return;
+      }
+
+      var phone = $('#phone').val();
+      if (!isValidPhoneNumber(phone)) {
+        alert('The phone number is invalid. Please enter a valid number.');
+        return;
+      }
+
+      var email = $('#email').val();
+      if (!isValidEmail(email)) {
+        alert('The email address is invalid. Please enter a valid email address.');
+        return;
+      }
+
+      var productId = $('#product_id').val();
+      var productValue = $('#product_value').val();
+
+      let fbc = getCookie('_fbc') || '';
+      let fbp = getCookie('_fbp') || '';
+
+      if (!initializedPixels[pixelId]) {
+        fbq('init', pixelId);
+        initializedPixels[pixelId] = true;
+      }
+
+      fbq('trackSingle', pixelId, 'PageView', { eventID: eventId });
+      fbq('trackSingle', pixelId, 'Purchase', {
+        value: productValue,
+        currency: 'KRW',
+        content_ids: [productId],
+        content_type: 'product',
+        eventID: eventId
+      });
+
+
+      $.ajax({
+        url: '/meta/pixel',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          urlId: urlId,
+          pixelId: pixelId,
+          tokenId: tokenId,
+          phone: phone,
+          email: email,
+          eventId: eventId,
+          productId: productId,
+          productValue: productValue,
+          fbc: fbc,
+          fbp: fbp
+        }),
+        success: function(response) {
+          $('#responseContent').html('<pre>' +
+                  JSON.stringify(response, null, 2) + '</pre>');
+          $('#result').show();
+        },
+        error: function(xhr, status, error) {
+          $('#responseContent').html('<p style="color: red;">Error: ' +
+                  error + '</p>');
+          $('#result').show();
+        }
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
